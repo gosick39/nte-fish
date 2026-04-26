@@ -16,10 +16,10 @@ AutoFishingBot::~AutoFishingBot() {
 }
 void AutoFishingBot::init() {
     // 脚本信息
-    SetConsoleTitle(L"异环-自动钓鱼 v1.2");
+    SetConsoleTitle(L"异环-自动钓鱼 v1.3");
 
     // 提示信息
-    std::cout << "    异环-自动钓鱼 v1.2  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
+    std::cout << "    异环-自动钓鱼 v1.3  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
     std::cout << "  注意：本程序仅学习使用，禁止商用！\n\n";
     std::cout << "  使用方法：双击打开.exe，进入钓鱼待机页面（不要按F）\n\n";
 
@@ -127,18 +127,31 @@ void AutoFishingBot::waitUntilWindowFocus() {
 
 void AutoFishingBot::waitUntilAppear(const Template& tpl, double threshold) {
     waitUntilWindowFocus();
-    int loopCount = 0;
     while (true) {
         cv::Mat frame = getScreenshot();
-
         if (tpl.match(frame)) {
             break;
         }
-
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        loopCount++;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
+void AutoFishingBot::waitUntilAllAppear(const std::vector<Template*>& tpls, double threshold) {
+    waitUntilWindowFocus();
+    while (true) {
+        cv::Mat frame = getScreenshot();
+		bool allMatch = false;
+        for (int i = 0; i < tpls.size(); ++i) {
+            if (tpls[i]->match(frame, threshold)) {
+                allMatch = true;
+            }
+        }
+        if (allMatch) {
+            break;
+		}
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 }
 
 std::string AutoFishingBot::waitUntilAnyAppear(const std::vector<Template*>& tpls, double threshold) {
@@ -333,15 +346,15 @@ void AutoFishingBot::startFishBar() {
 // ---------------------- 主运行循环 ---------------------- //
 
 void AutoFishingBot::run() {
-    Template t_start("./templates/START.png", 1018, 616, 1127, 638);
-    Template t_ready("./templates/READY.png", 1163, 628, 1209, 671);
+    //Template t_start("./templates/START.png", 1018, 616, 1127, 638);
+    Template t_ready1("./templates/READY1.png", 923, 642, 951, 672);
+    Template t_ready2("./templates/READY2.png", 996, 642, 1025, 672);
     Template t_catch("./templates/CATCH.png", 515, 166, 785, 186);
     Template t_close("./templates/CLOSE.png", 573, 646, 711, 661);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    //cv::Mat frame = getScreenshot();
-    //t_start.saveDebugImg(frame);
+    //t_ready1.saveDebugImg(getScreenshot());
 
     std::cout << "[主循环] 等待抛竿状态...\n";
 
@@ -353,11 +366,12 @@ void AutoFishingBot::run() {
   //  }
 
     while (true) {
-        waitUntilAppear(t_ready);
+        waitUntilAllAppear({ &t_ready1, &t_ready2 }, 0.8);
         std::cout << "[系统] 识别到 就绪(READY)，开始抛竿\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         keyboard->click('F');
 
-        waitUntilAppear(t_catch);
+        waitUntilAppear(t_catch, 0.8);
         std::cout << "[系统] 识别到 咬钩(CATCH)，开始拉鱼\n";
         keyboard->click('F');
         startFishBar();
