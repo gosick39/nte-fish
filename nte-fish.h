@@ -39,7 +39,7 @@ private:
     std::string waitUntilAnyAppear(const std::vector<Template*>& tpls, double threshold = 0.85);
     bool waitForMatch(const Template& tpl, double timeout_seconds, double threshold = 0.85);
     std::string waitForAnyMatch(const std::vector<Template*>& tpls, double timeout_seconds, double threshold = 0.85);
-    void startFishBar();
+    void startFishBar(int interval_ms);
     
     // FishBarÏà¹ØÍ¼Ïñ·ÖÎö
     std::pair<int, int> getGreenBar(const cv::Mat& screenshot);

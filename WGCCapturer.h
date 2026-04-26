@@ -82,7 +82,16 @@ private:
                 }
             }
         }
-        catch (...) {}
+        catch (winrt::hresult_error const& ex) {
+            // 捕获具体的 WinRT/COM 异常并打印
+            wprintf(L"[WGC 致命错误] WinRT 异常: %s (错误码: 0x%08X)\n", ex.message().c_str(), ex.code().value);
+        }
+        catch (const std::exception& ex) {
+            printf("[WGC 致命错误] C++ 标准异常: %s\n", ex.what());
+        }
+        catch (...) {
+            printf("[WGC 致命错误] 发生未知异常！\n");
+        }
     }
 
 public:

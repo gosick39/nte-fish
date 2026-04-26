@@ -16,13 +16,12 @@ AutoFishingBot::~AutoFishingBot() {
 }
 void AutoFishingBot::init() {
     // 脚本信息
-    SetConsoleTitle(L"异环-自动钓鱼 v1.3");
+    SetConsoleTitle(L"异环-自动钓鱼 v1.4");
 
     // 提示信息
-    std::cout << "    异环-自动钓鱼 v1.3  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
+    std::cout << "    异环-自动钓鱼 v1.4  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
     std::cout << "  注意：本程序仅学习使用，禁止商用！\n\n";
-    std::cout << "  使用方法：双击打开.exe，进入钓鱼待机页面（不要按F）\n\n";
-
+    std::cout << "  使用方法：双击打开.exe，进入钓鱼待机页面（不要按F），退出键`\n\n";
 
     //m_hwnd = FindWindowEx(nullptr, nullptr, L"UnrealWindow", nullptr);
     m_hwnd = FindWindowW(L"UnrealWindow", L"异环  ");
@@ -111,22 +110,7 @@ cv::Mat AutoFishingBot::getScreenshot() {
     return bgr;
 }
 
-void AutoFishingBot::waitUntilWindowFocus() {
-    int loopCount = 0;
-    auto startTime = std::chrono::steady_clock::now();
-    if (GetForegroundWindow() != m_hwnd) {
-        std::cout << "[状态] 正在等待窗口聚焦...\n";
-    }
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        if (GetForegroundWindow() == m_hwnd) {
-            break;
-        }
-    }
-}
-
 void AutoFishingBot::waitUntilAppear(const Template& tpl, double threshold) {
-    waitUntilWindowFocus();
     while (true) {
         cv::Mat frame = getScreenshot();
         if (tpl.match(frame)) {
@@ -138,7 +122,6 @@ void AutoFishingBot::waitUntilAppear(const Template& tpl, double threshold) {
 }
 
 void AutoFishingBot::waitUntilAllAppear(const std::vector<Template*>& tpls, double threshold) {
-    waitUntilWindowFocus();
     while (true) {
         cv::Mat frame = getScreenshot();
 		bool allMatch = false;
@@ -155,9 +138,6 @@ void AutoFishingBot::waitUntilAllAppear(const std::vector<Template*>& tpls, doub
 }
 
 std::string AutoFishingBot::waitUntilAnyAppear(const std::vector<Template*>& tpls, double threshold) {
-    waitUntilWindowFocus();
-    int loopCount = 0;
-
     while (true) {
         cv::Mat frame = getScreenshot();
 
@@ -169,16 +149,12 @@ std::string AutoFishingBot::waitUntilAnyAppear(const std::vector<Template*>& tpl
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        loopCount++;
     }
 }
 
 bool AutoFishingBot::waitForMatch(const Template& tpl, double timeout_seconds, double threshold) {
-    waitUntilWindowFocus();
-
     // 记录开始时间
     auto startTime = std::chrono::steady_clock::now();
-    int loopCount = 0;
 
     while (true) {
         // 1. 获取当前截图并进行匹配
@@ -198,15 +174,11 @@ bool AutoFishingBot::waitForMatch(const Template& tpl, double timeout_seconds, d
 
         // 适当休眠减少 CPU 占用
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        loopCount++;
     }
 }
 
 std::string AutoFishingBot::waitForAnyMatch(const std::vector<Template*>& tpls, double timeout_seconds, double threshold) {
-    waitUntilWindowFocus();
-
     auto startTime = std::chrono::steady_clock::now();
-    int loopCount = 0;
 
     while (true) {
         cv::Mat frame = getScreenshot();
@@ -227,19 +199,17 @@ std::string AutoFishingBot::waitForAnyMatch(const std::vector<Template*>& tpls, 
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        loopCount++;
     }
 }
 
 // ---------------------- Fish Bar 逻辑 ---------------------- //
 
 std::pair<int, int> AutoFishingBot::getGreenBar(const cv::Mat& screenshot) {
-    waitUntilWindowFocus();
+    if (screenshot.empty()) return { -1, -1 };
     cv::Rect roiRect(412, 46, 475, 7);
-    cv::Mat roi = screenshot(roiRect).clone();
-    // 确保是 BGR 格式以便画彩色标记
-    if (roi.channels() == 4) cv::cvtColor(roi, roi, cv::COLOR_BGRA2BGR);
-    cv::Vec3b target(173, 202, 42); // OpenCV 中 BGR 的匹配
+    cv::Mat roi = screenshot(roiRect);
+
+    cv::Vec3b target(173, 202, 42); // BGR
 
     std::vector<int> cols;
     for (int x = 0; x < roi.cols; ++x) {
@@ -268,8 +238,10 @@ std::pair<int, int> AutoFishingBot::getGreenBar(const cv::Mat& screenshot) {
 }
 
 int AutoFishingBot::getYellowCursor(const cv::Mat& screenshot) {
+    if (screenshot.empty()) return -1;
     cv::Rect roiRect(412, 46, 475, 7);
-    cv::Mat roi = screenshot(roiRect).clone();
+    cv::Mat roi = screenshot(roiRect);
+
     cv::Vec3b target(157, 246, 254); // BGR
 
     std::vector<int> cols;
@@ -305,40 +277,45 @@ void AutoFishingBot::waitUntilUiAppear() {
     }
 }
 
-void AutoFishingBot::startFishBar() {
-    waitUntilUiAppear();
+void AutoFishingBot::startFishBar(int interval_ms) {
 
     int missing_green_bar_count = 0;
     while (true) {
+        //auto t1 = std::chrono::high_resolution_clock::now();
+
         cv::Mat frame = getScreenshot();
+
+        //auto t2 = std::chrono::high_resolution_clock::now();
+
         auto green_bar = getGreenBar(frame);
-
-        if (green_bar.first == -1) {
-            missing_green_bar_count++;
-            if (missing_green_bar_count > 10) break; // 连续 10 帧检测不到绿条才结束
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            continue;
-        }
-
-        missing_green_bar_count = 0;
-        int left = green_bar.first;
-        int right = green_bar.second;
         int cursor = getYellowCursor(frame);
 
-        if (cursor == -1) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        //// 计算耗时
+        //auto t3 = std::chrono::high_resolution_clock::now();
+        //auto cap_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+        //auto det_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count();
+        //std::cout << "[Timer] 截图: " << cap_ms << "ms | 识别: " << det_ms << "ms" << std::endl;
+
+        // --- 逻辑判断 ---
+        if (green_bar.first == -1 || cursor == -1) {
+            missing_green_bar_count++;
+            if (missing_green_bar_count > 10) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
             continue;
         }
+        missing_green_bar_count = 0;
 
-        if (cursor < left) {
+        if (cursor < green_bar.first + 2) {
             keyboard->press('D');
-        } else if (cursor > right) {
+        }
+        else if (cursor > green_bar.second - 2) {
             keyboard->press('A');
-        } else {
+        }
+        else {
             keyboard->releaseAll();
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
     }
     keyboard->releaseAll();
 }
@@ -346,7 +323,8 @@ void AutoFishingBot::startFishBar() {
 // ---------------------- 主运行循环 ---------------------- //
 
 void AutoFishingBot::run() {
-    //Template t_start("./templates/START.png", 1018, 616, 1127, 638);
+    //Template t_start1("./templates/START1.png", 1034, 616, 1120, 638);
+    //Template t_start2("./templates/START2.png", 1034, 616, 1120, 638);
     Template t_ready1("./templates/READY1.png", 923, 642, 951, 672);
     Template t_ready2("./templates/READY2.png", 996, 642, 1025, 672);
     Template t_catch("./templates/CATCH.png", 515, 166, 785, 186);
@@ -354,15 +332,16 @@ void AutoFishingBot::run() {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    //t_ready1.saveDebugImg(getScreenshot());
+    //t_start1.saveDebugImg(getScreenshot());
 
     std::cout << "[主循环] 等待抛竿状态...\n";
 
-  //  if (waitForMatch(t_start, 3)) {
+  //  while (waitForAnyMatch({ &t_start1, &t_start2 }, 2, 0.85) != "") {
   //      std::cout << "[系统] 识别到 开始(START)，进入待机\n";
-  //      keyboard->mouseClick(t_start.getCenterX(), t_start.getCenterY());
-		//Sleep(200); 
-  //      keyboard->mouseClick(t_start.getCenterX(), t_start.getCenterY());
+  //      keyboard->mouseClick(t_start1.getCenterX(), t_start1.getCenterY());
+		//Sleep(200);
+  //      keyboard->mouseClick(t_start1.getCenterX(), t_start1.getCenterY());
+  //      continue;
   //  }
 
     while (true) {
@@ -371,12 +350,18 @@ void AutoFishingBot::run() {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         keyboard->click('F');
 
-        waitUntilAppear(t_catch, 0.8);
-        std::cout << "[系统] 识别到 咬钩(CATCH)，开始拉鱼\n";
-        keyboard->click('F');
-        startFishBar();
-
-        if (waitForMatch(t_close, 3.5, 0.85)) {
+		// 正常抛竿后8秒内要识别到咬钩，否则可能是抛竿失败或已无鱼饵
+        if (waitForMatch(t_catch, 8, 0.85)) {
+            std::cout << "[系统] 识别到 咬钩(CATCH)，开始拉鱼\n";
+            keyboard->click('F');
+            startFishBar(50);
+        } else {
+            std::cout << "[系统] 8秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
+            continue;
+		}
+    
+        // 正常拉鱼结束后5秒内要识别到关闭页面，否则可能是鱼脱钩
+        if (waitForMatch(t_close, 5, 0.85)) {
             // 增加计数
             m_fishCount++;
 
@@ -393,13 +378,12 @@ void AutoFishingBot::run() {
         }
         else {
             std::cout << "[系统] 很遗憾，本轮未钓到鱼" << std::endl;
-
         }
     }
 }
 
 //int main() {
-//    SetProcessDPIAware();
+//    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 //    AutoFishingBot bot;
 //    bot.init();
 //    bot.run();
@@ -450,7 +434,7 @@ int main() {
 
     // 2. 使用 try-catch 包裹主逻辑，捕获 C++ 层面抛出的异常
     try {
-        SetProcessDPIAware();
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         AutoFishingBot bot;
         bot.init();
         bot.run();
