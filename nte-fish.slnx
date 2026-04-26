@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="nte-fish.vcxproj" Id="8c108d53-4970-4561-85eb-1ff781f849d8" />
+</Solution>
