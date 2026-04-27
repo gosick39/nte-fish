@@ -19,6 +19,8 @@ public:
             //SendMessage(m_hwnd, WM_NCACTIVATE, TRUE, 0);
             //// 3. 模拟获得焦点：让窗口认为键盘输入流已定向到它
             //SendMessage(m_hwnd, WM_SETFOCUS, 0, 0);
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 

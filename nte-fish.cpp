@@ -336,6 +336,9 @@ void AutoFishingBot::run() {
 
     std::cout << "[主循环] 等待抛竿状态...\n";
 
+    // 激活窗口
+    keyboard->keepActive();
+
   //  while (waitForAnyMatch({ &t_start1, &t_start2 }, 2, 0.85) != "") {
   //      std::cout << "[系统] 识别到 开始(START)，进入待机\n";
   //      keyboard->mouseClick(t_start1.getCenterX(), t_start1.getCenterY());
