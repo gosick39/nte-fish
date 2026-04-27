@@ -202,6 +202,44 @@ std::string AutoFishingBot::waitForAnyMatch(const std::vector<Template*>& tpls, 
     }
 }
 
+bool AutoFishingBot::waitAndClickUntilGone(const Template& tpl, int key, double threshold, double waitTimeout, double clickTimeout) {
+    // 1. 第一步：先确认目标是否出现
+    //std::cout << "[流程] 正在等待目标 UI 出现: " << tpl.getTplName() << "...\n";
+    if (!waitForMatch(tpl, waitTimeout, 0.85)) {
+        //std::cerr << "[错误] 目标 UI 在 " << waitTimeout << "s 内未出现，取消操作。\n";
+        return false;
+    }
+
+    // 2. 第二步：执行点击并校验消失
+    std::cout << "[流程] 识别到 " << tpl.getTplName() << " ，开始执行点击校验...\n";
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        // 执行点击
+        keyboard->click(key);
+
+        // 等待游戏 UI 动画响应
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+
+        // 检查是否消失
+        cv::Mat frame = getScreenshot();
+        if (!tpl.match(frame, 0.85)) {
+            //std::cout << "[成功] 目标 UI 已消失，动作生效。\n";
+            return true;
+        }
+
+        // 检查超时
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+        if (elapsed >= clickTimeout) {
+            //std::cerr << "[警告] 点击超时，目标仍未消失。\n";
+            return false;
+        }
+
+        std::cout << "[重试] 目标 " << tpl.getTplName() << " 依然存在，再次尝试点击...\n";
+    }
+}
+
 // ---------------------- Fish Bar 逻辑 ---------------------- //
 
 std::pair<int, int> AutoFishingBot::getGreenBar(const cv::Mat& screenshot) {
@@ -349,13 +387,13 @@ void AutoFishingBot::run() {
 
     while (true) {
         waitUntilAllAppear({ &t_ready1, &t_ready2 }, 0.8);
-        std::cout << "[系统] 识别到 就绪(READY)，开始抛竿\n";
+        std::cout << "[就绪] 开始抛竿\n";
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         keyboard->click('F');
 
 		// 正常抛竿后8秒内要识别到咬钩，否则可能是抛竿失败或已无鱼饵
         if (waitForMatch(t_catch, 8, 0.85)) {
-            std::cout << "[系统] 识别到 咬钩(CATCH)，开始拉鱼\n";
+            std::cout << "[咬钩] 开始拉鱼\n";
             keyboard->click('F');
             startFishBar(50);
         } else {
@@ -363,8 +401,8 @@ void AutoFishingBot::run() {
             continue;
 		}
     
-        // 正常拉鱼结束后5秒内要识别到关闭页面，否则可能是鱼脱钩
-        if (waitForMatch(t_close, 5, 0.85)) {
+        // 正常拉鱼结束后8秒内要识别到关闭页面，否则可能是鱼脱钩
+        if (waitAndClickUntilGone(t_close, VK_ESCAPE, 0.85, 8, 5)) {
             // 增加计数
             m_fishCount++;
 
@@ -374,8 +412,7 @@ void AutoFishingBot::run() {
             int minutes = static_cast<int>(duration / 60);
             int seconds = static_cast<int>(duration % 60);
 
-            std::cout << "[系统] 识别到 结束(CLOSE)，关闭页面\n";
-            keyboard->click(VK_ESCAPE);
+            std::cout << "[结束] 已关闭页面\n";
 
             std::cout << "[系统] 本轮结束 | 已运行: " << minutes << "分" << seconds << "秒 | 总收获: " << m_fishCount << " 条" << std::endl;
         }
