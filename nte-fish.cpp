@@ -689,6 +689,8 @@ void AutoFishingBot::run() {
             std::cout << "[咬钩] 开始拉鱼\n";
             keyboard->click('F');
             startFishBar(50);
+            // 拉鱼结束后等待2秒，确保界面稳定再进行下一步识别，防止界面切换过快导致的误识别
+            std::this_thread::sleep_for(std::chrono::seconds(2));
         } 
         else if (curr == "FULL.png") {
             std::cout << "[满仓] 仓库已满，自动卖鱼中，请勿操作鼠标...\n";
