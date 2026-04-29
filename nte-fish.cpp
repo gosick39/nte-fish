@@ -696,13 +696,13 @@ void AutoFishingBot::run() {
             std::cout << "[满仓] 仓库已满，自动卖鱼中，请勿操作鼠标...\n";
             // TODO 卖鱼
             keyboard->click('Q');
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            keyboard->mouseClickSendInput(108, 270, 100);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            keyboard->mouseClickSendInput(710, 641, 100);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            keyboard->mouseClickSendInput(779, 471, 100);
             std::this_thread::sleep_for(std::chrono::seconds(3));
+            keyboard->mouseClickSendInput(108, 270, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            keyboard->mouseClickSendInput(710, 641, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            keyboard->mouseClickSendInput(779, 471, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(6));
             std::cout << "[卖鱼] 自动卖鱼完成，返回待机页面...\n";
             // 返回待机页面两次
             for (int i = 0; i < 2; i++) {
