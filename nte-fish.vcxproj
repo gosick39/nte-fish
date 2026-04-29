@@ -142,6 +142,7 @@
     <ClCompile Include="nte-fish.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ini.h" />
     <ClInclude Include="Keyboard.h" />
     <ClInclude Include="nte-fish.h" />
     <ClInclude Include="resource.h" />

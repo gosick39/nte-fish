@@ -16,12 +16,26 @@ AutoFishingBot::~AutoFishingBot() {
 }
 void AutoFishingBot::init() {
     // 脚本信息
-    SetConsoleTitle(L"异环-自动钓鱼 v1.4");
+    SetConsoleTitle(L"异环-自动钓鱼 v1.5");
 
     // 提示信息
-    std::cout << "    异环-自动钓鱼 v1.4  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
+    std::cout << "    异环-自动钓鱼 v1.5  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
     std::cout << "  注意：本程序仅学习使用，禁止商用！\n\n";
     std::cout << "  使用方法：双击打开.exe，进入钓鱼待机页面（不要按F），退出键`\n\n";
+
+    // 加载config.ini
+    ZIni ini("config.ini");
+    is_debug = ini.getInt("common", "is_debug", 0);
+    is_auto_sell = ini.getInt("common", "is_auto_sell", 0);
+    is_auto_buy = ini.getInt("common", "is_auto_buy", 0);
+    is_re_link = ini.getInt("common", "is_re_link", 0);
+    is_cut_tpl = ini.getInt("common", "is_cut_tpl", 0);
+    std::cout << "[config] is_debug = " << is_debug << std::endl;
+    std::cout << "[config] is_auto_sell = " << is_auto_sell << std::endl;
+    std::cout << "[config] is_auto_buy = " << is_auto_buy << std::endl;
+    std::cout << "[config] is_re_link = " << is_re_link << std::endl;
+    std::cout << "[config] is_cut_tpl = " << is_cut_tpl << std::endl;
+    std::cout << std::endl;
 
     //m_hwnd = FindWindowEx(nullptr, nullptr, L"UnrealWindow", nullptr);
     m_hwnd = FindWindowW(L"UnrealWindow", L"异环  ");
@@ -41,6 +55,7 @@ void AutoFishingBot::init() {
     else {
         m_useWGC = true;
     }
+    std::cout << std::endl;
 
     // 调整窗口大小以确保画面截取比例一致
     RECT rect;
@@ -53,18 +68,149 @@ void AutoFishingBot::init() {
         MoveWindow(m_hwnd, windowRect.left, windowRect.top, 1280 + dx, 720 + dy, TRUE);
     }
 
-    keyboard = new Keyboard(m_hwnd);
+    keyboard = new Keyboard(m_hwnd, is_debug);
 
-    // 启动后台监听退出的按键 `
-    std::thread([]() {
+    // 启动后台监听线程
+    startBackgroundMonitor();
+
+    if (is_cut_tpl) {
         while (true) {
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        }
+    }
+
+    // 加载外部模板 CSV (假设表头为: 模板名称,x1,y1,x2,y2)
+    loadTemplatesFromCSV("templates.csv");
+}
+
+void AutoFishingBot::loadTemplatesFromCSV(const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        std::cerr << "[错误] 未找到配置文件: " << filepath << std::endl;
+        return;
+    }
+
+    std::string line;
+    std::getline(file, line); // 跳过表头
+
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        std::stringstream ss(line);
+        std::string name, x1s, y1s, x2s, y2s, keyStr;
+
+        std::getline(ss, name, ',');
+        std::getline(ss, x1s, ',');
+        std::getline(ss, y1s, ',');
+        std::getline(ss, x2s, ',');
+        std::getline(ss, y2s, ',');
+        std::getline(ss, keyStr, ','); // 读取新增的按键列
+
+        int x1 = std::stoi(x1s);
+        int y1 = std::stoi(y1s);
+        int x2 = std::stoi(x2s);
+        int y2 = std::stoi(y2s);
+
+        // 处理按键：如果为空则为0，否则取第一个字符（如 'F', 'Q'）
+        char defKey = stringToKeyCode(keyStr);
+
+        std::string fullPath = "./templates/" + name;
+        if (!std::filesystem::exists(fullPath)) {
+            std::cerr << "[警告] 模板文件不存在: " << fullPath << std::endl;
+            continue;
+        }
+
+        // 存入 map
+        m_templates[name] = new Template(fullPath, x1, y1, x2, y2);
+        m_templates[name]->setIsDebug(is_debug);
+        m_templates[name]->setDefaultKey(defKey);
+    }
+}
+
+// 获取模板集合
+std::vector<Template*> AutoFishingBot::getTemplates() {
+    std::vector<Template*> result;
+    for (auto const& [name, tpl] : m_templates) {
+        result.push_back(tpl);
+    }
+    return result;
+}
+
+// 获取带默认按键的模板集合
+std::vector<Template*> AutoFishingBot::getTemplatesWithKeys() {
+    std::vector<Template*> result;
+    for (auto const& [name, tpl] : m_templates) {
+        if (tpl->getDefaultKey() != 0) {
+            result.push_back(tpl);
+        }
+    }
+    return result;
+}
+
+void AutoFishingBot::startBackgroundMonitor() {
+    std::thread([this]() {
+        bool isFirstPointSet = false;
+        POINT p1 = { 0, 0 };
+
+        while (true) {
+            // 1. 监听退出键 `
             if (GetAsyncKeyState(VK_OEM_3) & 0x8000) {
-                std::cout << "\n[退出] 检测到 ` 键，终止程序...\n";
+                std::cout << "\n[退出] 程序终止..." << std::endl;
                 exit(0);
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            // 2. 监听鼠标中键按下 (使用 GetAsyncKeyState 的单次点击检测逻辑)
+            static bool lastState = false;
+            bool currentState = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+
+            // 检测按下瞬间（从未按下变为按下）
+            if (currentState && !lastState) {
+                POINT currentPos;
+                GetCursorPos(&currentPos);
+                ScreenToClient(m_hwnd, &currentPos); // 转换为窗口相对坐标
+
+                if (!isFirstPointSet) {
+                    // 第一次按下：记录起点
+                    p1 = currentPos;
+                    isFirstPointSet = true;
+                    std::cout << "[坐标采集] 已设置起点: (" << p1.x << ", " << p1.y << ")，请移动鼠标到终点再次点击中键..." << std::endl;
+                }
+                else {
+                    // 第二次按下：计算矩形并截图
+                    POINT p2 = currentPos;
+                    isFirstPointSet = false; // 重置状态
+
+                    if (p1.x == p2.x && p1.y == p2.y) {
+                        std::cout << "[坐标采集] 两次点击位置相同，当前坐标: (" << p2.x << ", " << p2.y << ")" << std::endl;
+                    }
+                    else {
+                        // 确定矩形坐标 (处理反向点击的情况)
+                        int x1 = std::min(p1.x, p2.x);
+                        int y1 = std::min(p1.y, p2.y);
+                        int x2 = std::max(p1.x, p2.x);
+                        int y2 = std::max(p1.y, p2.y);
+
+                        std::cout << "[坐标采集] 矩形完成! 坐标: " << x1 << ", " << y1 << ", " << x2 << ", " << y2 << std::endl;
+
+                        // 获取截图并裁剪保存[cite: 1, 2]
+                        cv::Mat frame = getScreenshot();
+                        cv::Rect roi(x1, y1, x2 - x1, y2 - y1);
+
+                        // 防止越界检测
+                        roi = roi & cv::Rect(0, 0, frame.cols, frame.rows);
+
+                        if (roi.width > 0 && roi.height > 0) {
+                            cv::Mat crop = frame(roi).clone();
+                            std::string filename = "tpl_capture_" + std::to_string(time(nullptr)) + ".png";
+                            cv::imwrite(filename, crop);
+                            std::cout << "[截图保存] 区域已保存至: " << filename << std::endl;
+                        }
+                    }
+                }
+            }
+            lastState = currentState;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 降低 CPU 占用并防止连击抖动
         }
-    }).detach();
+        }).detach();
 }
 
 cv::Mat AutoFishingBot::getScreenshot() {
@@ -177,6 +323,71 @@ bool AutoFishingBot::waitForMatch(const Template& tpl, double timeout_seconds, d
     }
 }
 
+/**
+ * 等待模板匹配成功，并返回其在全屏截图中的中心点坐标
+ * @param tpl 模板对象
+ * @param outCenter [输出] 匹配成功时的中心点坐标
+ * @param timeout_seconds 超时时间（秒）
+ * @param threshold 相似度阈值
+ * @return 是否在超时前匹配成功
+ */
+bool AutoFishingBot::waitForMatchAndGetCenter(const Template& tpl, cv::Point& outCenter, double timeout_seconds, double threshold) {
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        // 1. 获取当前截图
+        cv::Mat frame = getScreenshot();
+
+        // 2. 调用带有位置返回功能的匹配方法
+        cv::Rect matchedRect;
+        // 假设你在 Template 类中实现了之前建议的 matchAndGetRect 方法
+        if (tpl.matchAndGetRect(frame, matchedRect)) {
+            // 计算中心点：左上角坐标 + 尺寸的一半
+            outCenter.x = matchedRect.x + matchedRect.width / 2;
+            outCenter.y = matchedRect.y + matchedRect.height / 2;
+            return true;
+        }
+
+        // 3. 超时检查
+        auto currentTime = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(currentTime - startTime).count();
+        if (elapsed >= timeout_seconds) {
+            return false;
+        }
+
+        // 4. 休眠以降低 CPU 负载
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
+bool AutoFishingBot::waitForAllMatch(const std::vector<Template*>& tpls, double timeout_seconds, double threshold) {
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        cv::Mat frame = getScreenshot();
+
+        bool allMatch = false;
+        for (int i = 0; i < tpls.size(); ++i) {
+            if (tpls[i]->match(frame, threshold)) {
+                allMatch = true;
+            }
+        }
+        if (allMatch) {
+            break;
+        }
+
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
+
+        if (elapsed >= timeout_seconds) {
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+	return true;    
+}
+
 std::string AutoFishingBot::waitForAnyMatch(const std::vector<Template*>& tpls, double timeout_seconds, double threshold) {
     auto startTime = std::chrono::steady_clock::now();
 
@@ -199,44 +410,6 @@ std::string AutoFishingBot::waitForAnyMatch(const std::vector<Template*>& tpls, 
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
-bool AutoFishingBot::waitAndClickUntilGone(const Template& tpl, int key, double threshold, double waitTimeout, double clickTimeout) {
-    // 1. 第一步：先确认目标是否出现
-    //std::cout << "[流程] 正在等待目标 UI 出现: " << tpl.getTplName() << "...\n";
-    if (!waitForMatch(tpl, waitTimeout, 0.85)) {
-        //std::cerr << "[错误] 目标 UI 在 " << waitTimeout << "s 内未出现，取消操作。\n";
-        return false;
-    }
-
-    // 2. 第二步：执行点击并校验消失
-    std::cout << "[流程] 识别到 " << tpl.getTplName() << " ，开始执行点击校验...\n";
-    auto startTime = std::chrono::steady_clock::now();
-
-    while (true) {
-        // 执行点击
-        keyboard->click(key);
-
-        // 等待游戏 UI 动画响应
-        std::this_thread::sleep_for(std::chrono::milliseconds(800));
-
-        // 检查是否消失
-        cv::Mat frame = getScreenshot();
-        if (!tpl.match(frame, 0.85)) {
-            //std::cout << "[成功] 目标 UI 已消失，动作生效。\n";
-            return true;
-        }
-
-        // 检查超时
-        auto currentTime = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(currentTime - startTime).count();
-        if (elapsed >= clickTimeout) {
-            //std::cerr << "[警告] 点击超时，目标仍未消失。\n";
-            return false;
-        }
-
-        std::cout << "[重试] 目标 " << tpl.getTplName() << " 依然存在，再次尝试点击...\n";
     }
 }
 
@@ -358,51 +531,104 @@ void AutoFishingBot::startFishBar(int interval_ms) {
     keyboard->releaseAll();
 }
 
+char AutoFishingBot::stringToKeyCode(const std::string& keyStr) {
+    if (keyStr.empty()) return 0;
+
+    // 转为大写以便匹配
+    std::string s = keyStr;
+    std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+
+    // 1. 处理特殊功能键
+    if (s == "ESC") return VK_ESCAPE;      // 0x1B
+    if (s == "SPACE") return VK_SPACE;    // 0x20
+    if (s == "ENTER") return VK_RETURN;   // 0x0D
+    if (s == "TAB") return VK_TAB;        // 0x09
+    if (s == "SHIFT") return VK_SHIFT;
+    if (s == "CTRL") return VK_CONTROL;
+    if (s == "ALT") return VK_MENU;
+
+    // 2. 处理如果是数字字符串（如 "27" 直接代表 ESC）
+    if (isdigit(s[0])) {
+        return (char)std::stoi(s);
+    }
+
+    // 3. 默认返回第一个字符（如 'F', 'Q', 'R'）
+    return s[0];
+}
+
 // ---------------------- 主运行循环 ---------------------- //
 
 void AutoFishingBot::run() {
-    //Template t_start1("./templates/START1.png", 1034, 616, 1120, 638);
-    //Template t_start2("./templates/START2.png", 1034, 616, 1120, 638);
-    Template t_ready1("./templates/READY1.png", 923, 642, 951, 672);
-    Template t_ready2("./templates/READY2.png", 996, 642, 1025, 672);
-    Template t_catch("./templates/CATCH.png", 515, 166, 785, 186);
-    Template t_close("./templates/CLOSE.png", 573, 646, 711, 661);
+    /*
+    Template t_start1("./templates/START1.png", 1034, 616, 1120, 638, is_debug);
+    Template t_start2("./templates/START2.png", 1034, 616, 1120, 638, is_debug);
+    //Template t_sure("./templates/SURE.png", 753, 464, 793, 485, is_debug);
+    Template t_login("./templates/LOGIN.png", 40, 50, 90, 95, is_debug);
+    Template t_enter("./templates/ENTER.png", 775, 383, 832, 402, is_debug);
+    Template t_ready1("./templates/READY1.png", 923, 642, 951, 672, is_debug);
+    Template t_ready2("./templates/READY2.png", 996, 642, 1025, 672, is_debug);
+    Template t_catch("./templates/CATCH.png", 515, 166, 785, 186, is_debug);
+    Template t_close("./templates/CLOSE.png", 573, 646, 711, 661, is_debug);
+    Template t_full("./templates/FULL.png", 462, 351, 600, 368, is_debug);
+    Template t_empty("./templates/EMPTY.png", 531, 350, 751, 368, is_debug);
+    // 万能鱼饵图标位置（可能每个人的不一样）： 340, 182, 406, 234
+    //Template t_wnye("./templates/WNYE.bmp", 35, 89, 439, 563, is_debug);
+    Template t_wnye("./templates/WNYE.png", 340, 182, 406, 234, is_debug);
+    std::cout << std::endl;
+    */
+
+    Template* t_start1 = m_templates["START1.png"];
+    Template* t_start2 = m_templates["START2.png"];
+    Template* t_login = m_templates["LOGIN.png"];
+    Template* t_enter = m_templates["ENTER.png"];
+    Template* t_ready1 = m_templates["READY1.png"];
+    Template* t_ready2 = m_templates["READY2.png"];
+    Template* t_catch = m_templates["CATCH.png"];
+    Template* t_close = m_templates["CLOSE.png"];
+    Template* t_full = m_templates["FULL.png"];
+    Template* t_empty = m_templates["EMPTY.png"];
+    Template* t_wnye = m_templates["WNYE.png"];
+
+    // 校验核心模板，防止未配置造成的 nullptr 闪退
+    if (!t_start1 || !t_ready1 || !t_catch || !t_close) {
+        std::cerr << "[错误] CSV配置中缺失关键钓鱼模板，无法运行主逻辑！\n";
+        return;
+    }
+    std::cout << std::endl;
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    //t_start1.saveDebugImg(getScreenshot());
+    //keyboard->click('F');
+    //std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    //t_wnye.saveDebugImg(getScreenshot());
 
     std::cout << "[主循环] 等待抛竿状态...\n";
 
     // 激活窗口
     keyboard->keepActive();
 
-  //  while (waitForAnyMatch({ &t_start1, &t_start2 }, 2, 0.85) != "") {
-  //      std::cout << "[系统] 识别到 开始(START)，进入待机\n";
-  //      keyboard->mouseClick(t_start1.getCenterX(), t_start1.getCenterY());
-		//Sleep(200);
-  //      keyboard->mouseClick(t_start1.getCenterX(), t_start1.getCenterY());
-  //      continue;
-  //  }
-
     while (true) {
-        waitUntilAllAppear({ &t_ready1, &t_ready2 }, 0.8);
-        std::cout << "[就绪] 开始抛竿\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        keyboard->click('F');
+		std::vector<Template*> firstTargets = { t_ready1, t_ready2, t_close };
+        if (is_re_link) {
+            firstTargets.push_back(t_login);
+            firstTargets.push_back(t_enter);
+            firstTargets.push_back(t_start1);
+            firstTargets.push_back(t_start2);
+        }
+        // 其他额外添加的模板
+        for (auto const& [name, tpl] : m_templates) {
+            if (tpl->getDefaultKey() != 0) {
+                firstTargets.push_back(tpl);
+            }
+        }
 
-		// 正常抛竿后8秒内要识别到咬钩，否则可能是抛竿失败或已无鱼饵
-        if (waitForMatch(t_catch, 8, 0.85)) {
-            std::cout << "[咬钩] 开始拉鱼\n";
+        std::string curr = waitUntilAnyAppear(firstTargets, 0.85);
+        if (curr == "READY1.png" || curr == "READY2.png") {
+            std::cout << "[就绪] 开始抛竿\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             keyboard->click('F');
-            startFishBar(50);
-        } else {
-            std::cout << "[系统] 8秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
-            continue;
-		}
-    
-        // 正常拉鱼结束后8秒内要识别到关闭页面，否则可能是鱼脱钩
-        if (waitAndClickUntilGone(t_close, VK_ESCAPE, 0.85, 8, 5)) {
+        }
+        else if (curr == "CLOSE.png") {
             // 增加计数
             m_fishCount++;
 
@@ -412,13 +638,132 @@ void AutoFishingBot::run() {
             int minutes = static_cast<int>(duration / 60);
             int seconds = static_cast<int>(duration % 60);
 
-            std::cout << "[结束] 已关闭页面\n";
+            std::cout << "[结束] 关闭页面 | 已运行: " << minutes << "分" << seconds << "秒 | 总收获: " << m_fishCount << " 条" << std::endl;
 
-            std::cout << "[系统] 本轮结束 | 已运行: " << minutes << "分" << seconds << "秒 | 总收获: " << m_fishCount << " 条" << std::endl;
+            keyboard->click(VK_ESCAPE);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            continue;
+        }
+        else if (curr == "LOGIN.png") {
+            std::cout << "[系统] 识别到 登录(LOGIN)，可能是断线了，正在尝试点击登录...\n";
+            keyboard->mouseClickSendInput(640, 621, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            continue;
+        }
+        else if (curr == "ENTER.png") {
+            std::cout << "[系统] 识别到 F钓鱼(ENTER)，按F进入钓鱼\n";
+            keyboard->click('F');
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            continue;
+		}
+        else if (curr == "START1.png" || curr == "START2.png") {
+            std::cout << "[系统] 识别到 开始(START)，进入待机\n";
+            keyboard->mouseClickSendInput(t_start1->getCenterX(), t_start1->getCenterY(), 100);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            continue;
+		}
+        // 判断 curr 是否在有默认 key 的模板集合中
+        else if (m_templates.count(curr) && m_templates[curr]->getDefaultKey() != 0) {
+			char key = m_templates[curr]->getDefaultKey();
+            std::cout << "[匹配成功] " << curr << "  按键码：" << static_cast<int>(key) << std::endl;
+            keyboard->click(key);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            continue;
         }
         else {
-            std::cout << "[系统] 很遗憾，本轮未钓到鱼" << std::endl;
+            std::cout << "[系统] 等待抛竿状态时识别到未知页面: " << curr << "，请检查游戏界面是否异常\n";
+            std::this_thread::sleep_for(std::chrono::seconds(10));
+            continue;
+		}
+
+		// 正常抛竿后8秒内要识别到咬钩，否则可能是抛竿失败或已无鱼饵或已满仓
+        std::vector<Template*> secondTargets = { t_catch };
+        if (is_auto_sell) {
+            secondTargets.push_back(t_full);
         }
+        if (is_auto_buy) {
+            secondTargets.push_back(t_empty);
+        }
+        curr = waitForAnyMatch(secondTargets, 8, 0.85);
+        if (curr == "CATCH.png") {
+            std::cout << "[咬钩] 开始拉鱼\n";
+            keyboard->click('F');
+            startFishBar(50);
+        } 
+        else if (curr == "FULL.png") {
+            std::cout << "[满仓] 仓库已满，自动卖鱼中，请勿操作鼠标...\n";
+            // TODO 卖鱼
+            keyboard->click('Q');
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            keyboard->mouseClickSendInput(108, 270, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            keyboard->mouseClickSendInput(710, 641, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            keyboard->mouseClickSendInput(779, 471, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            std::cout << "[卖鱼] 自动卖鱼完成，返回待机页面...\n";
+            // 返回待机页面两次
+            for (int i = 0; i < 2; i++) {
+                // 如果2秒内没识别到待机页就按ESC
+                if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
+                    break;
+                }
+                keyboard->click(VK_ESCAPE);
+            }       
+            continue;
+        }
+        else if (curr == "EMPTY.png") {
+            std::cout << "[无饵] 已无鱼饵，自动买饵中，请勿操作鼠标...\n";
+            // TODO 买饵
+            keyboard->click('R');
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            // 识别万能鱼饵
+            cv::Point clickPos;
+			bool isMatch = waitForMatchAndGetCenter(*t_wnye, clickPos, 2, 0.9);
+            if (isMatch) {
+                keyboard->mouseClickSendInput(clickPos.x, clickPos.y, 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                keyboard->mouseClickSendInput(1218, 635, 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                keyboard->mouseClickSendInput(1077, 684, 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                keyboard->mouseClickSendInput(770, 474, 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::cout << "[买饵] 自动买饵完成，返回待机页面...\n";
+                // 返回待机页面两次
+                for (int i = 0; i < 2; i++) {
+                    // 如果2秒内没识别到待机页就按ESC
+                    if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
+                        break;
+                    }
+                    keyboard->click(VK_ESCAPE);
+                }
+                std::cout << "[买饵] 切换鱼饵到万能鱼饵...\n";
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                keyboard->click('E');
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                keyboard->mouseClickSendInput(780, 468, 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::cout << "[买饵] 切换鱼饵完成，返回待机页面...\n";
+                continue;
+            }
+            else {
+                std::cout << "[买饵] 未识别到万能鱼饵位置，返回待机页面...\n";
+                // 返回待机页面两次
+                for (int i = 0; i < 2; i++) {
+                    // 如果2秒内没识别到待机页就按ESC
+                    if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
+                        break;
+                    }
+                    keyboard->click(VK_ESCAPE);
+                }
+                continue;
+            }
+        }
+        else {
+            std::cout << "[系统] 8秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
+            continue;
+		}
     }
 }
 
