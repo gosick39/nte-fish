@@ -341,7 +341,7 @@ bool AutoFishingBot::waitForMatchAndGetCenter(const Template& tpl, cv::Point& ou
         // 2. 调用带有位置返回功能的匹配方法
         cv::Rect matchedRect;
         // 假设你在 Template 类中实现了之前建议的 matchAndGetRect 方法
-        if (tpl.matchAndGetRect(frame, matchedRect)) {
+        if (tpl.matchAndGetRect(frame, matchedRect, threshold)) {
             // 计算中心点：左上角坐标 + 尺寸的一半
             outCenter.x = matchedRect.x + matchedRect.width / 2;
             outCenter.y = matchedRect.y + matchedRect.height / 2;
@@ -586,6 +586,7 @@ void AutoFishingBot::run() {
     Template* t_catch = m_templates["CATCH.png"];
     Template* t_close = m_templates["CLOSE.png"];
     Template* t_full = m_templates["FULL.png"];
+    Template* t_gjcs = m_templates["GJCS.png"];
     Template* t_empty = m_templates["EMPTY.png"];
     Template* t_wnye = m_templates["WNYE.png"];
 
@@ -600,7 +601,7 @@ void AutoFishingBot::run() {
 
     //keyboard->click('F');
     //std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-    //t_wnye.saveDebugImg(getScreenshot());
+    //t_close->saveDebugImg(getScreenshot());
 
     std::cout << "[主循环] 等待抛竿状态...\n";
 
@@ -689,8 +690,8 @@ void AutoFishingBot::run() {
             std::cout << "[咬钩] 开始拉鱼\n";
             keyboard->click('F');
             startFishBar(50);
-            // 拉鱼结束后等待2秒，确保界面稳定再进行下一步识别，防止界面切换过快导致的误识别
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            // 拉鱼结束后等待2.5秒，确保界面稳定再进行下一步识别，防止界面切换过快导致的误识别
+            std::this_thread::sleep_for(std::chrono::milliseconds(2500));
         } 
         else if (curr == "FULL.png") {
             std::cout << "[满仓] 仓库已满，自动卖鱼中，请勿操作鼠标...\n";
@@ -702,7 +703,16 @@ void AutoFishingBot::run() {
             keyboard->mouseClickSendInput(710, 641, 100);
             std::this_thread::sleep_for(std::chrono::seconds(3));
             keyboard->mouseClickSendInput(779, 471, 100);
-            std::this_thread::sleep_for(std::chrono::seconds(6));
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            // 前往高价出售
+            if (waitForMatch(*t_gjcs, 6, 0.85)) {
+                std::cout << "[卖鱼] 识别到可前往高价出售...\n";
+                keyboard->mouseClickSendInput(t_gjcs->getCenterX(), t_gjcs->getCenterY(), 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::cout << "[卖鱼] 高价出售快捷提交...\n";
+                keyboard->mouseClickSendInput(t_gjcs->getCenterX(), t_gjcs->getCenterY(), 100);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            }
             std::cout << "[卖鱼] 自动卖鱼完成，返回待机页面...\n";
             // 返回待机页面两次
             for (int i = 0; i < 2; i++) {
@@ -730,7 +740,7 @@ void AutoFishingBot::run() {
                 keyboard->mouseClickSendInput(1077, 684, 100);
                 std::this_thread::sleep_for(std::chrono::seconds(2));
                 keyboard->mouseClickSendInput(770, 474, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::this_thread::sleep_for(std::chrono::seconds(3));
                 std::cout << "[买饵] 自动买饵完成，返回待机页面...\n";
                 // 返回待机页面两次
                 for (int i = 0; i < 2; i++) {
@@ -750,7 +760,7 @@ void AutoFishingBot::run() {
                 continue;
             }
             else {
-                std::cout << "[买饵] 未识别到万能鱼饵位置，返回待机页面...\n";
+                std::cout << "[买饵] 未识别到万能鱼饵（预设位置2，可手动截取自己的万能鱼饵模板并更新csv），返回待机页面...\n";
                 // 返回待机页面两次
                 for (int i = 0; i < 2; i++) {
                     // 如果2秒内没识别到待机页就按ESC
