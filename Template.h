@@ -20,7 +20,7 @@ public:
             // 确保模板图被缩放到 ROI 指定的大小，防止图片素材尺寸不一致
             cv::resize(m_tplImage, m_tplImage, cv::Size(w, h));
             m_basename = std::filesystem::path(filename).filename().string();
-            std::cout << "[模板] 已加载 " << filename << "，预设位置: ("
+            std::cout << "[模板] 已加载 " << m_basename << "，预设位置: ("
                 << x1 << ", " << y1 << ") " << w << "x" << h << std::endl;
         }
     }

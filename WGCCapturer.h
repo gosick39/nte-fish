@@ -104,13 +104,11 @@ public:
 
         RECT er;
         DwmGetWindowAttribute(m_targetHwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &er, sizeof(RECT));
-        RECT wr;
-        GetWindowRect(m_targetHwnd, &wr);
         POINT pt = { 0, 0 };
         ClientToScreen(m_targetHwnd, &pt);
 
         m_offsetX = pt.x - er.left;
-        m_offsetY = pt.y - wr.top;
+        m_offsetY = pt.y - er.top;
 
         printf("[WGC] 校准数据: 标题栏(Y偏移)=%d, 实体边框(X偏移)=%d\n", m_offsetY, m_offsetX);
 

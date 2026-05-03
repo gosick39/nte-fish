@@ -16,12 +16,12 @@ AutoFishingBot::~AutoFishingBot() {
 }
 void AutoFishingBot::init() {
     // 脚本信息
-    SetConsoleTitle(L"异环-自动钓鱼 v1.5");
+    SetConsoleTitle(L"异环-自动钓鱼 v1.6");
 
     // 提示信息
-    std::cout << "    异环-自动钓鱼 v1.5  --by gosick39（幻塔妙妙屋Q群：565943273）\n\n";
+    std::cout << "    异环-自动钓鱼 v1.6  --by gosick39（Q群：565943273）\n\n";
     std::cout << "  注意：本程序仅学习使用，禁止商用！\n\n";
-    std::cout << "  使用方法：双击打开.exe，进入钓鱼待机页面（不要按F），退出键`\n\n";
+    std::cout << "  使用方法：进入钓鱼待机状态，双击打开.exe，退出键`\n\n";
 
     // 加载config.ini
     ZIni ini("config.ini");
@@ -66,6 +66,28 @@ void AutoFishingBot::init() {
         int dx = (windowRect.right - windowRect.left) - (rect.right - rect.left);
         int dy = (windowRect.bottom - windowRect.top) - (rect.bottom - rect.top);
         MoveWindow(m_hwnd, windowRect.left, windowRect.top, 1280 + dx, 720 + dy, TRUE);
+    }
+
+	// 调整控制台窗口位置
+    HWND hConsole = GetConsoleWindow();
+    if (hConsole) {
+        RECT gameRect;
+        GetWindowRect(m_hwnd, &gameRect);
+        // 控制台尺寸
+        const int consoleWidth = 500;
+        const int consoleHeight = gameRect.bottom - gameRect.top;
+        // 放在游戏窗口，间距 1px
+        int x = gameRect.left + 1;
+        int y = gameRect.top;
+        SetWindowPos(
+            hConsole,
+            NULL,
+            x,
+            y,
+            consoleWidth,
+            consoleHeight,
+            SWP_NOZORDER | SWP_NOACTIVATE
+        );
     }
 
     keyboard = new Keyboard(m_hwnd, is_debug);
@@ -590,6 +612,8 @@ void AutoFishingBot::run() {
     Template* t_empty = m_templates["EMPTY.png"];
     Template* t_wnye = m_templates["WNYE.png"];
 
+    //t_close->saveDebugImg(getScreenshot());
+
     // 校验核心模板，防止未配置造成的 nullptr 闪退
     if (!t_start1 || !t_ready1 || !t_catch || !t_close) {
         std::cerr << "[错误] CSV配置中缺失关键钓鱼模板，无法运行主逻辑！\n";
@@ -597,16 +621,19 @@ void AutoFishingBot::run() {
     }
     std::cout << std::endl;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    std::cout << "[系统] 初始化成功，将自动最小化...\n\n";
 
-    //keyboard->click('F');
-    //std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-    //t_close->saveDebugImg(getScreenshot());
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
-    std::cout << "[主循环] 等待抛竿状态...\n";
+    // 最小化控制台窗口
+    ShowWindow(GetConsoleWindow(), SW_MINIMIZE);
 
-    // 激活窗口
-    keyboard->keepActive();
+    // 激活游戏窗口到前台
+    SetForegroundWindow(m_hwnd);
+    BringWindowToTop(m_hwnd);
+    //keyboard->keepActive();
+
+    std::cout << "[系统] 等待抛竿状态...\n";
 
     while (true) {
 		std::vector<Template*> firstTargets = { t_ready1, t_ready2, t_close };
@@ -626,7 +653,7 @@ void AutoFishingBot::run() {
         std::string curr = waitUntilAnyAppear(firstTargets, 0.85);
         if (curr == "READY1.png" || curr == "READY2.png") {
             std::cout << "[就绪] 开始抛竿\n";
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(500));
             keyboard->click('F');
         }
         else if (curr == "CLOSE.png") {
@@ -642,7 +669,7 @@ void AutoFishingBot::run() {
             std::cout << "[结束] 关闭页面 | 已运行: " << minutes << "分" << seconds << "秒 | 总收获: " << m_fishCount << " 条" << std::endl;
 
             keyboard->click(VK_ESCAPE);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
         }
         else if (curr == "LOGIN.png") {
@@ -685,7 +712,7 @@ void AutoFishingBot::run() {
         if (is_auto_buy) {
             secondTargets.push_back(t_empty);
         }
-        curr = waitForAnyMatch(secondTargets, 8, 0.85);
+        curr = waitForAnyMatch(secondTargets, 15, 0.85);
         if (curr == "CATCH.png") {
             std::cout << "[咬钩] 开始拉鱼\n";
             keyboard->click('F');
@@ -773,7 +800,7 @@ void AutoFishingBot::run() {
             }
         }
         else {
-            std::cout << "[系统] 8秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
+            std::cout << "[系统] 15秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
             continue;
 		}
     }
