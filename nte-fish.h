@@ -27,6 +27,7 @@ public:
     ~AutoFishingBot();
     void init();
     void run();
+    bool autoBuy();
     cv::Mat getScreenshot();
     Keyboard* keyboard = nullptr;
 
@@ -37,8 +38,10 @@ private:
     HDC m_hdcDesktop = nullptr; // 用于 GDI 截图
 
     bool is_debug = false; // 是否调试
+    double match_threshold = 0.8; // 模板识别阈值
 	bool is_auto_sell = false; // 是否自动卖鱼
-	bool is_auto_buy = false; // 是否自动买饵
+	int auto_buy_times = 0; // 无饵时自动买饵次数（0则关闭）
+	int buy_times = 1; // 买饵次数
 	bool is_re_link = false; // 是否断线重连
 	bool is_cut_tpl = false; // 是否截取模板
 

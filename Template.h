@@ -18,7 +18,7 @@ public:
         }
         else {
             // 确保模板图被缩放到 ROI 指定的大小，防止图片素材尺寸不一致
-            cv::resize(m_tplImage, m_tplImage, cv::Size(w, h));
+            //cv::resize(m_tplImage, m_tplImage, cv::Size(w, h));
             m_basename = std::filesystem::path(filename).filename().string();
             std::cout << "[模板] 已加载 " << m_basename << "，预设位置: ("
                 << x1 << ", " << y1 << ") " << w << "x" << h << std::endl;
@@ -86,8 +86,15 @@ public:
         cv::Mat roi = screenBGR(m_roiRect);
 
         // 3. 模板匹配 (使用 TM_CCOEFF_NORMED)
+        //cv::Mat res;
+        //cv::matchTemplate(roi, m_tplImage, res, cv::TM_CCOEFF_NORMED);
+
+        cv::Mat roi_pyr, tpl_pyr;
+        // 下采样 1 层（尺寸减半）
+        cv::pyrDown(roi, roi_pyr);
+        cv::pyrDown(m_tplImage, tpl_pyr);
         cv::Mat res;
-        cv::matchTemplate(roi, m_tplImage, res, cv::TM_CCOEFF_NORMED);
+        cv::matchTemplate(roi_pyr, tpl_pyr, res, cv::TM_CCOEFF_NORMED);
 
         double maxVal;
         cv::minMaxLoc(res, nullptr, &maxVal);
@@ -110,12 +117,12 @@ public:
           
         return false;
     }
-
     
     bool matchAndGetRect(const cv::Mat& screenshot, cv::Rect& outRect, double threshold = 0.8) const {
+        auto t1 = std::chrono::high_resolution_clock::now();
         if (screenshot.empty() || m_tplImage.empty()) return false;
 
-        // 1. 颜色空间转换 (保持与模板一致)
+        // 1. 颜色空间转换
         cv::Mat screenBGR;
         if (screenshot.channels() == 4) {
             cv::cvtColor(screenshot, screenBGR, cv::COLOR_BGRA2BGR);
@@ -124,94 +131,48 @@ public:
             screenBGR = screenshot;
         }
 
-        // 安全检查：确保 ROI 区域没有超出截图边界
+        // 安全检查
         cv::Rect safeRoi = m_roiRect & cv::Rect(0, 0, screenBGR.cols, screenBGR.rows);
         if (safeRoi.width <= 0 || safeRoi.height <= 0) return false;
 
         // 2. 提取 ROI
         cv::Mat roi = screenBGR(safeRoi);
 
-        // 3. 模板匹配
-        cv::Mat res, grayRoi, grayTpl;
-        //cv::matchTemplate(roi, m_tplImage, res, cv::TM_CCOEFF_NORMED);
-        cv::cvtColor(roi, grayRoi, cv::COLOR_BGR2GRAY);
-        cv::cvtColor(m_tplImage, grayTpl, cv::COLOR_BGR2GRAY);
-        cv::matchTemplate(grayRoi, grayTpl, res, cv::TM_CCOEFF_NORMED);
+        // 金字塔降采样
+        cv::Mat roi_pyr, tpl_pyr;
+        cv::pyrDown(roi, roi_pyr);
+        cv::pyrDown(m_tplImage, tpl_pyr);
 
-        double maxVal;
-        cv::Point maxLoc; // 用于记录匹配到的左上角点（ROI 相对坐标）
-        cv::minMaxLoc(res, nullptr, &maxVal, nullptr, &maxLoc);
-
-        if (is_debug) {
-            std::cout << "  -> [" << m_basename << "] 相似度: " << maxVal
-                << " 位置: " << maxLoc << std::endl;
-            cv::imwrite("debug_roi.png", roi);
-            cv::imwrite("debug_tpl.png", m_tplImage);
-        }
-
-        // 4. 判断阈值并计算绝对坐标
-        if (maxVal >= threshold) {
-            // 计算在原始全屏截图中的位置：
-            // 绝对 X = ROI起始X + 相对匹配点X
-            // 绝对 Y = ROI起始Y + 相对匹配点Y
-            outRect = cv::Rect(
-                safeRoi.x + maxLoc.x,
-                safeRoi.y + maxLoc.y,
-                m_tplImage.cols,
-                m_tplImage.rows
-            );
-            return true;
-        }
-
-        return false;
-    }
-
-    bool matchAndGetRect1(const cv::Mat& screenshot, cv::Rect& outRect) const {
-        if (screenshot.empty() || m_tplImage.empty()) return false;
-
-        // 1. 颜色处理：转为灰度图（减少颜色微调带来的干扰）
-        cv::Mat screenGray, tplGray;
-        if (screenshot.channels() == 4) {
-            cv::Mat temp;
-            cv::cvtColor(screenshot, temp, cv::COLOR_BGRA2BGR);
-            cv::cvtColor(temp, screenGray, cv::COLOR_BGR2GRAY);
-        }
-        else {
-            cv::cvtColor(screenshot, screenGray, cv::COLOR_BGR2GRAY);
-        }
-        cv::cvtColor(m_tplImage, tplGray, cv::COLOR_BGR2GRAY);
-
-        // 2. 提取 ROI (此时用灰度图提取)
-        cv::Rect safeRoi = m_roiRect & cv::Rect(0, 0, screenGray.cols, screenGray.rows);
-        if (safeRoi.width < tplGray.cols || safeRoi.height < tplGray.rows) return false;
-        cv::Mat roiGray = screenGray(safeRoi);
-
-        // 强制检查：在 matchTemplate 前保存一张图，看颜色正不正
-        cv::imwrite("CHECK_ROI_COLOR.bmp", roiGray);
-        cv::imwrite("CHECK_TPL_COLOR.bmp", tplGray);
-
-        // 3. 使用模板匹配 (它能处理这种几个像素的位移)
-        cv::Mat result;
-        cv::matchTemplate(roiGray, tplGray, result, cv::TM_CCOEFF_NORMED);
+        // 3. 模板匹配 (在缩小的图像上进行)
+        cv::Mat res;
+        cv::matchTemplate(roi_pyr, tpl_pyr, res, cv::TM_CCOEFF_NORMED);
 
         double maxVal;
         cv::Point maxLoc;
-        cv::minMaxLoc(result, nullptr, &maxVal, nullptr, &maxLoc);
+        cv::minMaxLoc(res, nullptr, &maxVal, nullptr, &maxLoc);
 
+        // 调试信息
         if (is_debug) {
-            std::cout << "[调试] " << m_basename << " 最高相似度: " << maxVal << std::endl;
+            auto t2 = std::chrono::high_resolution_clock::now();
+            auto det_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+            std::cout << "  -> [" << m_basename << "] 相似度: " << maxVal << " | 识别耗时: " << det_ms << "ms" << std::endl;
         }
 
-        // 4. 这里是重点：阈值设为 0.7 左右
-        // 因为你的 REAL_DIFF 显示轮廓很准，说明形状没变，0.7 足够过滤掉错误的格子
-        if (maxVal >= 0.7) {
+        // 4. 判断阈值并还原坐标
+        if (maxVal >= threshold) {
+            // 关键点：将 maxLoc 坐标乘以 2 还原回原图 ROI 坐标系
             outRect = cv::Rect(
-                safeRoi.x + maxLoc.x,
-                safeRoi.y + maxLoc.y,
+                safeRoi.x + (maxLoc.x * 2),
+                safeRoi.y + (maxLoc.y * 2),
                 m_tplImage.cols,
                 m_tplImage.rows
             );
             return true;
+        }
+
+        if (is_debug) {
+            cv::imwrite("debug_roi.png", roi);
+            cv::imwrite("debug_tpl.png", m_tplImage);
         }
 
         return false;

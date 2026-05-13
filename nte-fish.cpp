@@ -16,23 +16,25 @@ AutoFishingBot::~AutoFishingBot() {
 }
 void AutoFishingBot::init() {
     // 脚本信息
-    SetConsoleTitle(L"异环-自动钓鱼 v1.6");
+    SetConsoleTitle(L"异环-自动钓鱼 v1.6.2");
 
     // 提示信息
-    std::cout << "    异环-自动钓鱼 v1.6  --by gosick39（Q群：565943273）\n\n";
+    std::cout << "    异环-自动钓鱼 v1.6.2  --by gosick39（Q群：565943273）\n\n";
     std::cout << "  注意：本程序仅学习使用，禁止商用！\n\n";
     std::cout << "  使用方法：进入钓鱼待机状态，双击打开.exe，退出键`\n\n";
 
     // 加载config.ini
     ZIni ini("config.ini");
     is_debug = ini.getInt("common", "is_debug", 0);
+    match_threshold = ini.getDouble("common", "match_threshold", 0.8);
     is_auto_sell = ini.getInt("common", "is_auto_sell", 0);
-    is_auto_buy = ini.getInt("common", "is_auto_buy", 0);
+    auto_buy_times = ini.getInt("common", "auto_buy_times", 0);
     is_re_link = ini.getInt("common", "is_re_link", 0);
     is_cut_tpl = ini.getInt("common", "is_cut_tpl", 0);
     std::cout << "[config] is_debug = " << is_debug << std::endl;
+    std::cout << "[config] match_threshold = " << match_threshold << std::endl;
     std::cout << "[config] is_auto_sell = " << is_auto_sell << std::endl;
-    std::cout << "[config] is_auto_buy = " << is_auto_buy << std::endl;
+    std::cout << "[config] auto_buy_times = " << auto_buy_times << std::endl;
     std::cout << "[config] is_re_link = " << is_re_link << std::endl;
     std::cout << "[config] is_cut_tpl = " << is_cut_tpl << std::endl;
     std::cout << std::endl;
@@ -96,6 +98,7 @@ void AutoFishingBot::init() {
     startBackgroundMonitor();
 
     if (is_cut_tpl) {
+		std::cout << "[提示] 当前处于截取模板模式，请在游戏窗口按下鼠标中键来框选模板。如需切回钓鱼模式，请修改 config.ini 中的 is_cut_tpl=0 后重新执行exe...\n";
         while (true) {
             std::this_thread::sleep_for(std::chrono::seconds(3));
         }
@@ -194,7 +197,7 @@ void AutoFishingBot::startBackgroundMonitor() {
                     // 第一次按下：记录起点
                     p1 = currentPos;
                     isFirstPointSet = true;
-                    std::cout << "[坐标采集] 已设置起点: (" << p1.x << ", " << p1.y << ")，请移动鼠标到终点再次点击中键..." << std::endl;
+                    std::cout << "[坐标采集] 已设置起点: (" << p1.x << "," << p1.y << ")，请移动鼠标到终点再次点击中键..." << std::endl;
                 }
                 else {
                     // 第二次按下：计算矩形并截图
@@ -202,7 +205,7 @@ void AutoFishingBot::startBackgroundMonitor() {
                     isFirstPointSet = false; // 重置状态
 
                     if (p1.x == p2.x && p1.y == p2.y) {
-                        std::cout << "[坐标采集] 两次点击位置相同，当前坐标: (" << p2.x << ", " << p2.y << ")" << std::endl;
+                        std::cout << "[坐标采集] 两次点击位置相同，当前坐标: (" << p2.x << "," << p2.y << ")" << std::endl;
                     }
                     else {
                         // 确定矩形坐标 (处理反向点击的情况)
@@ -211,7 +214,7 @@ void AutoFishingBot::startBackgroundMonitor() {
                         int x2 = std::max(p1.x, p2.x);
                         int y2 = std::max(p1.y, p2.y);
 
-                        std::cout << "[坐标采集] 矩形完成! 坐标: " << x1 << ", " << y1 << ", " << x2 << ", " << y2 << std::endl;
+                        std::cout << "[坐标采集] 矩形完成! 坐标: " << x1 << "," << y1 << "," << x2 << "," << y2 << std::endl;
 
                         // 获取截图并裁剪保存[cite: 1, 2]
                         cv::Mat frame = getScreenshot();
@@ -378,7 +381,7 @@ bool AutoFishingBot::waitForMatchAndGetCenter(const Template& tpl, cv::Point& ou
         }
 
         // 4. 休眠以降低 CPU 负载
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
 
@@ -610,7 +613,10 @@ void AutoFishingBot::run() {
     Template* t_full = m_templates["FULL.png"];
     Template* t_gjcs = m_templates["GJCS.png"];
     Template* t_empty = m_templates["EMPTY.png"];
+    Template* t_empty2 = m_templates["EMPTY2.png"];
     Template* t_wnye = m_templates["WNYE.png"];
+    //Template* t_wnye = new Template("./templates/WNYE.png", 35, 89, 439, 563);
+    //t_wnye->setIsDebug(true);
 
     //t_close->saveDebugImg(getScreenshot());
 
@@ -650,7 +656,7 @@ void AutoFishingBot::run() {
             }
         }
 
-        std::string curr = waitUntilAnyAppear(firstTargets, 0.85);
+        std::string curr = waitUntilAnyAppear(firstTargets, match_threshold);
         if (curr == "READY1.png" || curr == "READY2.png") {
             std::cout << "[就绪] 开始抛竿\n";
             //std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -687,6 +693,20 @@ void AutoFishingBot::run() {
         else if (curr == "START1.png" || curr == "START2.png") {
             std::cout << "[系统] 识别到 开始(START)，进入待机\n";
             keyboard->mouseClickSendInput(t_start1->getCenterX(), t_start1->getCenterY(), 100);
+            // 识别2s是否已无鱼饵
+            if (auto_buy_times > 0 && waitForMatch(*t_empty2, 2, match_threshold)) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::cout << "[无饵] 已无鱼饵，自动买饵中，请勿操作鼠标...\n";
+                keyboard->mouseClickSendInput(864, 626, 100);
+                // 自动买饵成功时
+                if (autoBuy()) {
+                    std::cout << "[买饵] 切换鱼饵到万能鱼饵...\n";
+                    keyboard->mouseClickSendInput(1141, 516, 100);
+                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    keyboard->mouseClickSendInput(780, 468, 100);
+                    std::cout << "[买饵] 切换鱼饵完成，返回待机页面...\n";
+                }
+            }
             std::this_thread::sleep_for(std::chrono::seconds(2));
             continue;
 		}
@@ -709,10 +729,10 @@ void AutoFishingBot::run() {
         if (is_auto_sell) {
             secondTargets.push_back(t_full);
         }
-        if (is_auto_buy) {
+        if (auto_buy_times > 0) {
             secondTargets.push_back(t_empty);
         }
-        curr = waitForAnyMatch(secondTargets, 15, 0.85);
+        curr = waitForAnyMatch(secondTargets, 15, match_threshold);
         if (curr == "CATCH.png") {
             std::cout << "[咬钩] 开始拉鱼\n";
             keyboard->click('F');
@@ -732,7 +752,7 @@ void AutoFishingBot::run() {
             keyboard->mouseClickSendInput(779, 471, 100);
             std::this_thread::sleep_for(std::chrono::seconds(3));
             // 前往高价出售
-            if (waitForMatch(*t_gjcs, 6, 0.85)) {
+            if (waitForMatch(*t_gjcs, 6, match_threshold)) {
                 std::cout << "[卖鱼] 识别到可前往高价出售...\n";
                 keyboard->mouseClickSendInput(t_gjcs->getCenterX(), t_gjcs->getCenterY(), 100);
                 std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -744,7 +764,7 @@ void AutoFishingBot::run() {
             // 返回待机页面两次
             for (int i = 0; i < 2; i++) {
                 // 如果2秒内没识别到待机页就按ESC
-                if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
+                if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, match_threshold)) {
                     break;
                 }
                 keyboard->click(VK_ESCAPE);
@@ -753,57 +773,76 @@ void AutoFishingBot::run() {
         }
         else if (curr == "EMPTY.png") {
             std::cout << "[无饵] 已无鱼饵，自动买饵中，请勿操作鼠标...\n";
-            // TODO 买饵
             keyboard->click('R');
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            // 识别万能鱼饵
-            cv::Point clickPos;
-			bool isMatch = waitForMatchAndGetCenter(*t_wnye, clickPos, 2, 0.9);
-            if (isMatch) {
-                keyboard->mouseClickSendInput(clickPos.x, clickPos.y, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                keyboard->mouseClickSendInput(1218, 635, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                keyboard->mouseClickSendInput(1077, 684, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                keyboard->mouseClickSendInput(770, 474, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(3));
-                std::cout << "[买饵] 自动买饵完成，返回待机页面...\n";
-                // 返回待机页面两次
-                for (int i = 0; i < 2; i++) {
-                    // 如果2秒内没识别到待机页就按ESC
-                    if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
-                        break;
-                    }
-                    keyboard->click(VK_ESCAPE);
-                }
+            // 自动买饵成功时
+            if (autoBuy()) {
                 std::cout << "[买饵] 切换鱼饵到万能鱼饵...\n";
-                std::this_thread::sleep_for(std::chrono::seconds(2));
                 keyboard->click('E');
                 std::this_thread::sleep_for(std::chrono::seconds(2));
                 keyboard->mouseClickSendInput(780, 468, 100);
-                std::this_thread::sleep_for(std::chrono::seconds(2));
                 std::cout << "[买饵] 切换鱼饵完成，返回待机页面...\n";
-                continue;
             }
-            else {
-                std::cout << "[买饵] 未识别到万能鱼饵（预设位置2，可手动截取自己的万能鱼饵模板并更新csv），返回待机页面...\n";
-                // 返回待机页面两次
-                for (int i = 0; i < 2; i++) {
-                    // 如果2秒内没识别到待机页就按ESC
-                    if (waitForAllMatch({ &t_ready1, &t_ready2 }, 2, 0.8)) {
-                        break;
-                    }
-                    keyboard->click(VK_ESCAPE);
-                }
-                continue;
-            }
+            continue;
         }
         else {
             std::cout << "[系统] 15秒内未识别到 咬钩(CATCH)，可能是抛竿失败或已无鱼饵，将重新抛竿...\n";
             continue;
 		}
     }
+}
+
+// 自动购买鱼饵
+bool AutoFishingBot::autoBuy() {
+    bool result = false;
+    Template* t_ready1 = m_templates["READY1.png"];
+    Template* t_ready2 = m_templates["READY2.png"];
+    Template* t_wnye = m_templates["WNYE.png"];
+    Template* t_ts = m_templates["TS.png"];
+    Template* t_tips = m_templates["TIPS.png"];
+    Template* t_yjsd = m_templates["YJSD.png"];
+	// 如果没成功进入渔具商店，判定为买饵失败，返回
+    if (!waitForMatch(*t_yjsd, 2, match_threshold)) {
+        std::cout << "[买饵] 进入渔具商店失败\n";
+        return false;
+    }
+    // 识别万能鱼饵
+    cv::Point clickPos;
+    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    bool isMatch = waitForMatchAndGetCenter(*t_wnye, clickPos, 3, match_threshold);
+    if (isMatch) {
+        keyboard->mouseClickSendInput(clickPos.x, clickPos.y, 100);
+        for (int i = 1; i <= auto_buy_times; i++) {
+            std::cout << "[买饵] 第 " << i << "/" << auto_buy_times << " 次买饵...\n";
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            // 选择最大数量
+            keyboard->mouseClickSendInput(1218, 635, 100);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            // 点击购买
+            keyboard->mouseClickSendInput(1077, 684, 100);
+            if (waitForMatch(*t_ts, 2, match_threshold)) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(600));
+            }
+            // 点击确定购买
+            keyboard->mouseClickSendInput(770, 474, 100);
+            if (waitForMatch(*t_tips, 3, match_threshold)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(600));
+            }
+            // 再次点击关闭提示
+            keyboard->mouseClickSendInput(770, 474, 100);
+        }
+        std::cout << "[买饵] 自动买饵完成，返回待机页面...\n";
+        result = true;
+    }
+    else {
+        std::cout << "[买饵] 未识别到万能鱼饵（预设位置2，可手动截取自己的万能鱼饵模板并更新csv），返回待机页面...\n";
+    }
+    // 当前处于渔具商店界面，按ESC返回
+    if (waitForMatch(*t_yjsd, 2, match_threshold)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(600));
+        keyboard->click(VK_ESCAPE);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1600));
+    }
+    return result;
 }
 
 //int main() {
